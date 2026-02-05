@@ -6,13 +6,12 @@ Tools for parsing and visualizing `*.sce` files (Klippel 3D Scanner).
 
 ## Example view
 
-![Example view](images/image.png)
-
-## Files
-
-- `sce_parser.py` — parser library that loads geometry and response (`amp_db`, `phase_rad`) into a `pandas.DataFrame`.
-- `animate_membrane.py` — animated membrane view for a chosen frequency + mean amplitude plot at the bottom.
-- `main.py` — small “test app” entrypoint to run the animation from CLI.
+<table>
+  <tr>
+    <td><img src="images/example1.png" alt="Example view 1" width="420"></td>
+    <td><img src="images/example2.png" alt="Example view 2" width="420"></td>
+  </tr>
+</table>
 
 ## Requirements
 
@@ -22,27 +21,29 @@ Tools for parsing and visualizing `*.sce` files (Klippel 3D Scanner).
 Install (example):
 
 ```powershell
-python -m pip install numpy pandas matplotlib
+python -m pip install -r requirements.txt
 ```
 
 ## Usage
 
+All usage goes through the `main.py` CLI.
+
 ### Animation for a target frequency (nearest by default)
 
 ```powershell
-python animate_membrane.py path\to\your_measurement.sce --freq 100
+python main.py --sce path\to\your_measurement.sce --freq 100
 ```
 
 ### Animation for index `j` (1-based, as stored in the file)
 
 ```powershell
-python animate_membrane.py path\to\your_measurement.sce --j 14
+python main.py --sce path\to\your_measurement.sce --j 14
 ```
 
-### Test app (`main.py`)
+### Mean amplitude table (quick check)
 
 ```powershell
-python main.py --sce path\to\your_measurement.sce --freq 100
+python main.py --sce path\to\your_measurement.sce --mean-only
 ```
 
 ## Interactivity
@@ -64,7 +65,7 @@ Example:
 python main.py --sce path\to\your_measurement.sce --freq 1400 --smooth 0.3 --smooth-iters 5
 ```
 
-More robust “Klippel-like” smoothing for outliers:
+More robust smoothing for outliers:
 
 ```powershell
 python main.py --sce path\to\your_measurement.sce --freq 1400 --smooth 0.5 --smooth-iters 5 --smooth-method median
@@ -84,3 +85,10 @@ Tasks are defined in `.vscode/tasks.json`:
 - `Run: mean amplitude (prompted)`
 
 Run them via: `Terminal -> Run Task...`.
+
+## Project layout
+
+- `main.py` — CLI entrypoint (recommended way to run the app).
+- `animate_membrane.py` — matplotlib animation + mean amplitude plot implementation (invoked by `main.py`).
+- `sce_parser.py` — `.sce` parser utilities (geometry, frequency blocks, response blocks).
+
