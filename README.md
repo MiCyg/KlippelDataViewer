@@ -4,6 +4,10 @@ Note: this repository contains **generated scripts** (created with AI assistance
 
 Tools for parsing and visualizing `*.sce` files (Klippel 3D Scanner).
 
+## Example view
+
+![Example view](images/image.png)
+
 ## Files
 
 - `sce_parser.py` — parser library that loads geometry and response (`amp_db`, `phase_rad`) into a `pandas.DataFrame`.
