@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Caches / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+
+# Local config / secrets
+.env
+.env.*
+
+# Builds
+build/
+dist/
+*.egg-info/
+
+# Outputs (generated media)
+outputs/
+*.gif
+*.mp4
+*.avi
+
+# Data logs (keep raw data, ignore generated logs)
+data/**
+
