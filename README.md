@@ -51,6 +51,7 @@ python main.py --sce path\to\your_measurement.sce --mean-only
 The animation is shown in 2D (displacement as a colormap on the (x,z) plane).
 The matplotlib window is interactive (zoom/pan in the toolbar). Additionally:
 
+- Click the mean-amplitude plot (bottom) to switch the animated frequency.
 - `Space` pauses/resumes the animation (useful for zoom/pan)
 - `Esc` / `q` closes the window
 
@@ -91,4 +92,3 @@ Run them via: `Terminal -> Run Task...`.
 - `main.py` — CLI entrypoint (recommended way to run the app).
 - `animate_membrane.py` — matplotlib animation + mean amplitude plot implementation (invoked by `main.py`).
 - `sce_parser.py` — `.sce` parser utilities (geometry, frequency blocks, response blocks).
-
