@@ -137,6 +137,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Sigma [mm] for --smooth-method gaussian (distance weighting on x-z plane).",
     )
+    p.add_argument(
+        "--mesh",
+        action="store_true",
+        help="Show triangulation mesh on top of displacement field.",
+    )
+    p.add_argument(
+        "--surface",
+        action="store_true",
+        help="Show interpolated surface plot (via triangulation) instead of scatter points.",
+    )
+    p.add_argument(
+        "--grid-points",
+        type=int,
+        default=100,
+        help="Number of grid points per axis for surface interpolation (higher = smoother but slower).",
+    )
     return p
 
 
@@ -164,6 +180,8 @@ def main() -> None:
     phase = df["phase_rad"].to_numpy(dtype=float, copy=False)
     amp_lin = amp_db_to_linear_mm_per_v(amp_db)  # mm/V
 
+    # Keep only actually measured (non-silent) points.
+    # Points without a measurement stay "missing" in the visualization (no interpolation).
     valid = np.isfinite(amp_db) & (amp_db > args.silent_db + 1e-9) & np.isfinite(phase)
     amp_lin = np.where(valid, amp_lin, 0.0)
     phase = np.where(valid, phase, 0.0)
@@ -207,7 +225,7 @@ def main() -> None:
     axm.plot(means["f_hz"], means["mean_amp_db"], "-", lw=1)
     axm.set_xlabel("Frequency [Hz]")
     axm.set_ylabel("Mean amplitude [dB mm/V]")
-    axm.set_xscale("log")
+    # axm.set_xscale("log")
     axm.grid(True, alpha=0.3)
     vline = axm.axvline(float(f_selected), color="tab:red", lw=1)
 
@@ -255,7 +273,8 @@ def main() -> None:
             valid=valid,
         )
 
-    disp0 = np.zeros_like(x, dtype=float)
+    disp0 = np.full_like(x, np.nan, dtype=float)
+    disp0[valid] = 0.0
 
     amp_valid = np.sqrt(comp_c[valid] ** 2 + comp_s[valid] ** 2)
     if amp_valid.size:
@@ -268,7 +287,38 @@ def main() -> None:
 
     norm = TwoSlopeNorm(vcenter=0.0, vmin=-max_disp, vmax=max_disp)
 
-    tpc = ax_top.tripcolor(tri, disp0, shading="gouraud", cmap="coolwarm", norm=norm)
+    # Render visualization (scatter or surface, with optional mesh).
+    # Use a smaller marker for dense scans to keep the view readable.
+    marker_size = 18 if x.shape[0] <= 4000 else 8
+    cmap = plt.get_cmap("coolwarm").copy()
+    cmap.set_bad(alpha=0.0)
+    
+    if args.surface:
+        # Interpolated surface using tripcolor (from triangulation)
+        tpc = ax_top.tripcolor(
+            tri,
+            disp0,
+            cmap=cmap,
+            norm=norm,
+            edgecolors="none" if not args.mesh else "face",
+            shading="flat",
+        )
+        if args.mesh:
+            ax_top.triplot(tri, color="k", linewidth=0.3, alpha=0.2)
+    else:
+        # Scatter plot with optional mesh
+        tpc = ax_top.scatter(
+            x,
+            z,
+            c=disp0,
+            s=marker_size,
+            cmap=cmap,
+            norm=norm,
+            linewidths=0.0,
+        )
+        if args.mesh:
+            ax_top.triplot(tri, color="k", linewidth=0.5, alpha=0.3)
+    
     cb = fig.colorbar(tpc, ax=ax_top, pad=0.1, fraction=0.03)
     cb.set_label("displacement [mm/V] (scaled)")
 
@@ -286,6 +336,7 @@ def main() -> None:
         cos_wt = np.cos(theta)
         sin_wt = np.sin(theta)
         disp = cos_wt * comp_c - sin_wt * comp_s
+        disp = np.where(valid, disp, np.nan)
 
         tpc.set_array(disp)
 

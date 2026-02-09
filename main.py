@@ -20,6 +20,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--smooth-method", choices=["mean", "median", "trimmed", "gaussian"], default="mean", help="Smoothing method")
     p.add_argument("--smooth-trim", type=float, default=0.1, help="Trim fraction for trimmed smoothing")
     p.add_argument("--smooth-sigma", type=float, default=5.0, help="Sigma [mm] for gaussian smoothing")
+    p.add_argument("--mesh", action="store_true", help="Show triangulation mesh on top of displacement field")
+    p.add_argument("--surface", action="store_true", help="Show interpolated surface plot instead of scatter points")
+    p.add_argument("--grid-points", type=int, default=100, help="Number of grid points per axis for surface interpolation")
     return p
 
 
@@ -52,6 +55,12 @@ def main() -> None:
         cmd += ["--smooth-trim", str(args.smooth_trim)]
     if hasattr(args, "smooth_sigma") and args.smooth_sigma is not None and float(args.smooth_sigma) != 5.0:
         cmd += ["--smooth-sigma", str(args.smooth_sigma)]
+    if hasattr(args, "mesh") and args.mesh:
+        cmd += ["--mesh"]
+    if hasattr(args, "surface") and args.surface:
+        cmd += ["--surface"]
+    if hasattr(args, "grid_points") and args.grid_points is not None and args.grid_points != 100:
+        cmd += ["--grid-points", str(args.grid_points)]
 
     sys.argv = cmd
     animate_main()

@@ -27,8 +27,12 @@ def parse_geometry(path: str | Path) -> pd.DataFrame:
     """
     Parse `geometry = [ ... ];` section.
 
-    Returns DataFrame with columns: i, r, phi, y, x, z
-    (x,z computed from polar coordinates).
+    Supports two common formats (auto-detected):
+
+    - Polar: `i r phi y`  -> `x = r*cos(phi)`, `z = r*sin(phi)`
+    - Cartesian: `i x z y`
+
+    Returns DataFrame with columns: i, y, x, z, r, phi.
     """
     lines = _read_lines(path)
     inside = False
@@ -52,16 +56,42 @@ def parse_geometry(path: str | Path) -> pd.DataFrame:
             continue
         try:
             i_pt = int(parts[0])
-            r = float(parts[1])
-            phi = float(parts[2])
-            y = float(parts[3])
+            a = float(parts[1])
+            b = float(parts[2])
+            c = float(parts[3])
         except ValueError:
             continue
-        rows.append((i_pt, r, phi, y))
+        rows.append((i_pt, a, b, c))
 
-    df = pd.DataFrame(rows, columns=["i", "r", "phi", "y"])
-    df["x"] = df["r"] * np.cos(df["phi"])
-    df["z"] = df["r"] * np.sin(df["phi"])
+    raw = pd.DataFrame(rows, columns=["i", "c1", "c2", "c3"])
+    if raw.empty:
+        return pd.DataFrame(columns=["i", "y", "x", "z", "r", "phi"])
+
+    # Heuristic: if c1 contains negatives, it can't be a radius -> treat as cartesian x.
+    # Otherwise, if c2 is within roughly [0..2π] (or [-π..π]) treat as polar angle.
+    c1 = raw["c1"].to_numpy(dtype=float, copy=False)
+    c2 = raw["c2"].to_numpy(dtype=float, copy=False)
+
+    has_negative_c1 = bool(np.nanmin(c1) < -1e-9)
+    max_abs_c2 = float(np.nanmax(np.abs(c2))) if c2.size else 0.0
+    looks_like_radians = max_abs_c2 <= (2.0 * np.pi + 0.25)
+
+    is_polar = (not has_negative_c1) and looks_like_radians
+
+    if is_polar:
+        r = raw["c1"].astype(float)
+        phi = raw["c2"].astype(float)
+        y = raw["c3"].astype(float)
+        x = r * np.cos(phi)
+        z = r * np.sin(phi)
+    else:
+        x = raw["c1"].astype(float)
+        z = raw["c2"].astype(float)
+        y = raw["c3"].astype(float)
+        r = np.sqrt(x * x + z * z)
+        phi = np.arctan2(z, x)
+
+    df = pd.DataFrame({"i": raw["i"].astype(int), "y": y, "x": x, "z": z, "r": r, "phi": phi})
     return df
 
 
@@ -227,4 +257,3 @@ def mean_amplitude_by_frequency(
         mean_db = 20.0 * np.log10(mean_lin) if mean_lin > 0 else float(silent_level_db)
         rows.append((resp.j, resp.f_hz, mean_lin, mean_db))
     return pd.DataFrame(rows, columns=["j", "f_hz", "mean_amp_lin", "mean_amp_db"]).sort_values("f_hz")
-
