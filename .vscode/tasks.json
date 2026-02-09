@@ -16,19 +16,34 @@
   ],
   "tasks": [
     {
+      "label": "Setup: venv (.vrenv) + requirements",
+      "type": "shell",
+      "command": "powershell",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& { if (!(Test-Path .vrenv)) { py -m venv .vrenv }; & .\\.vrenv\\Scripts\\python.exe -m pip install --upgrade pip; & .\\.vrenv\\Scripts\\python.exe -m pip install -r requirements.txt }"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "Run: animation (prompted)",
       "type": "shell",
-      "command": "python",
+      "command": ".\\.vrenv\\Scripts\\python.exe",
       "args": ["main.py", "--sce", "${input:scePath}", "--freq", "${input:freqHz}"],
       "problemMatcher": []
     },
     {
       "label": "Run: mean amplitude (prompted)",
       "type": "shell",
-      "command": "python",
+      "command": ".\\.vrenv\\Scripts\\python.exe",
       "args": ["main.py", "--sce", "${input:scePath}", "--mean-only"],
       "problemMatcher": []
     }
   ]
 }
-

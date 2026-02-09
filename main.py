@@ -20,6 +20,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--smooth-method", choices=["mean", "median", "trimmed", "gaussian"], default="mean", help="Smoothing method")
     p.add_argument("--smooth-trim", type=float, default=0.1, help="Trim fraction for trimmed smoothing")
     p.add_argument("--smooth-sigma", type=float, default=5.0, help="Sigma [mm] for gaussian smoothing")
+    p.add_argument("--show-points", action="store_true", help="Overlay measurement points on the membrane plot")
+    p.add_argument("--points-size", type=float, default=6.0, help="Marker size for measurement points")
+    p.add_argument("--points-alpha", type=float, default=0.6, help="Marker alpha for measurement points")
     return p
 
 
@@ -52,6 +55,12 @@ def main() -> None:
         cmd += ["--smooth-trim", str(args.smooth_trim)]
     if hasattr(args, "smooth_sigma") and args.smooth_sigma is not None and float(args.smooth_sigma) != 5.0:
         cmd += ["--smooth-sigma", str(args.smooth_sigma)]
+    if getattr(args, "show_points", False):
+        cmd += ["--show-points"]
+    if hasattr(args, "points_size") and args.points_size is not None and float(args.points_size) != 6.0:
+        cmd += ["--points-size", str(args.points_size)]
+    if hasattr(args, "points_alpha") and args.points_alpha is not None and float(args.points_alpha) != 0.6:
+        cmd += ["--points-alpha", str(args.points_alpha)]
 
     sys.argv = cmd
     animate_main()

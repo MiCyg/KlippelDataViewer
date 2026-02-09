@@ -141,6 +141,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Sigma [mm] for --smooth-method gaussian (distance weighting on x-z plane).",
     )
+    p.add_argument(
+        "--show-points",
+        action="store_true",
+        help="Overlay measurement points (x,z) on the membrane plot.",
+    )
+    p.add_argument(
+        "--points-size",
+        type=float,
+        default=6.0,
+        help="Marker size for --show-points.",
+    )
+    p.add_argument(
+        "--points-alpha",
+        type=float,
+        default=0.6,
+        help="Marker alpha for --show-points.",
+    )
     return p
 
 
@@ -278,6 +295,16 @@ def main() -> None:
     ax_top.set_ylabel("z [mm]")
     ax_top.set_xlim(np.nanmin(x), np.nanmax(x))
     ax_top.set_ylim(np.nanmin(z), np.nanmax(z))
+    if args.show_points:
+        ax_top.scatter(
+            x,
+            z,
+            s=float(args.points_size),
+            c="k",
+            alpha=float(args.points_alpha),
+            linewidths=0.0,
+            zorder=5,
+        )
 
     def _recompute_components() -> None:
         comp_c0, comp_s0, valid = _load_components_for_j(int(state["j"]))
