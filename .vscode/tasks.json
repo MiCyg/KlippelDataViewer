@@ -16,19 +16,34 @@
   ],
   "tasks": [
     {
-      "label": "Run: animation (prompted)",
+      "label": "Setup venv environment",
       "type": "shell",
-      "command": "python",
+      "command": "powershell",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "& { if (!(Test-Path .venv)) { py -m venv .venv }; & .\\.venv\\Scripts\\python.exe -m pip install --upgrade pip; & .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt }"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: animation",
+      "type": "shell",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": ["main.py", "--sce", "${input:scePath}", "--freq", "${input:freqHz}"],
       "problemMatcher": []
     },
     {
-      "label": "Run: mean amplitude (prompted)",
+      "label": "Run: mean amplitude",
       "type": "shell",
-      "command": "python",
+      "command": ".\\.venv\\Scripts\\python.exe",
       "args": ["main.py", "--sce", "${input:scePath}", "--mean-only"],
       "problemMatcher": []
     }
   ]
 }
-
