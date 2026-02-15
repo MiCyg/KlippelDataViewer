@@ -95,6 +95,15 @@
 			"--mean-only"
 		],
 		"problemMatcher": []
+	},
+	{
+		"label": "Run: sce_parser",
+		"type": "shell",
+		"command": ".venv/Scripts/python",
+		"args": [
+			"sce_parser.py"
+		],
+		"problemMatcher": []
 	}
 ]
 }
