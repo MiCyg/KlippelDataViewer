@@ -117,12 +117,8 @@ class MembraneAnimator:
             if suffix == ".gif":
                 from matplotlib.animation import PillowWriter
                 writer = PillowWriter(fps=fps)
-            elif suffix == ".mp4":
-                from matplotlib.animation import FFMpegWriter
-                writer = FFMpegWriter(fps=fps)
             else:
-                raise SystemExit("Unsupported export extension. Use .gif or .mp4")
-
+                raise SystemExit("Unsupported export extension. Use .gif")
             self.anim.save(str(out_path), writer=writer, dpi=100)
         except Exception as exc:
             raise SystemExit(f"Export failed: {exc}")

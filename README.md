@@ -60,7 +60,7 @@ Run them via: `Terminal -> Run Task...`.
 
 ## Project layout
 
-- `main.py` — CLI entrypoint.
-- `animate_membrane.py` — `MembraneAnimator` + `MembraneModel` (matplotlib animation + AAL plot).
-- `sce_parser.py` — `.sce` parser utilities .
+- `main.py` — CLI entrypoint
+- `animate_membrane.py` — `MembraneAnimator` + `MembraneModel` (matplotlib animation + AAL plot)
+- `sce_parser.py` — `.sce` parser utilities
 
