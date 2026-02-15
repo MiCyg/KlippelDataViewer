@@ -35,14 +35,20 @@ class SceDataContainer:
             self._file_path = Path(path)
         self._frequencies = self._parse_frequencies()
         self._geometry = self._parse_geometry()
-        self.aal = self._calc_AAL()
+        self._aal = self._calc_AAL()
         
+    def get_file_path(self):
+        return self._file_path
+    
     def get_frequencies(self) -> pd.Series: 
         return self._frequencies.copy()
     
     def get_geometry(self) -> pd.DataFrame:
         return self._geometry
-    
+ 
+    def get_aal(self) -> pd.DataFrame:
+        return self._aal
+   
     def get_response(self, freq: float = None, j: int = None) -> pd.DataFrame:
         df, _, _ = self.get_response_raw(freq=freq, j=j, nearest=False, exact=True)
         disp_db = df["amp_db"].to_numpy(dtype=float, copy=False)
@@ -60,14 +66,8 @@ class SceDataContainer:
         )
         return out
 
-    def select_frequency(
-        self,
-        *,
-        freq: float | None = None,
-        j: int | None = None,
-        nearest: bool = True,
-        exact: bool = False,
-    ) -> tuple[float, int]:
+
+    def select_frequency(self,*,freq: float | None = None,j: int | None = None,nearest: bool = True,exact: bool = False) -> tuple[float, int]:
         if freq is None and j is None:
             raise ValueError("Either freq or j must be provided.")
 
@@ -89,14 +89,7 @@ class SceDataContainer:
         j_selected = int(self._frequencies.index[idx])
         return float(self._frequencies.iloc[idx]), j_selected
 
-    def get_response_raw(
-        self,
-        *,
-        freq: float | None = None,
-        j: int | None = None,
-        nearest: bool = True,
-        exact: bool = False,
-    ) -> tuple[pd.DataFrame, float, int]:
+    def get_response_raw(self,*,freq: float | None = None,j: int | None = None,nearest: bool = True,exact: bool = False) -> tuple[pd.DataFrame, float, int]:
         f_selected, j_selected = self.select_frequency(freq=freq, j=j, nearest=nearest, exact=exact)
 
         resp_df = None

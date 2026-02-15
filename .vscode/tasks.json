@@ -7,12 +7,6 @@
       "type": "promptString",
       "description": "Path to your .sce file (relative to workspace root is OK)",
       "default": "path/to/your_measurement.sce"
-    },
-    {
-      "id": "freqHz",
-      "type": "promptString",
-      "description": "Target frequency in Hz (nearest match by default)",
-      "default": "100"
     }
   ],
 
@@ -71,28 +65,26 @@
 		"dependsOrder": "sequence",
 		"problemMatcher": []
 	},
+    {
+      "label": "Run: animation (.venv)",
+      "type": "shell",
+      "command": ".venv/Scripts/python",
+      "args": [
+        "main.py",
+        "--sce",
+        "${input:scePath}"
+      ],
+      "problemMatcher": []
+    },
 	{
-		"label": "Run: animation (.venv)",
+		"label": "Run: AAL amplitude (.venv)",
 		"type": "shell",
 		"command": ".venv/Scripts/python",
 		"args": [
 			"main.py",
 			"--sce",
 			"${input:scePath}",
-			"--freq",
-			"${input:freqHz}"
-		],
-		"problemMatcher": []
-	},
-	{
-		"label": "Run: mean amplitude (.venv)",
-		"type": "shell",
-		"command": ".venv/Scripts/python",
-		"args": [
-			"main.py",
-			"--sce",
-			"${input:scePath}",
-			"--mean-only"
+			"--aal-only"
 		],
 		"problemMatcher": []
 	},
