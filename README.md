@@ -8,8 +8,8 @@ Tools for parsing and visualizing `*.sce` files (Klippel 3D Scanner).
 
 <table>
   <tr>
-    <td><img src="images/example_3kHz.gif" alt="Example view 1" width="420"></td>
-    <td><img src="images/example_1kHz.gif" alt="Example view 2" width="420"></td>
+    <td><img src="images/example_3kHz.gif" alt="Example view 1"></td>
+    <td><img src="images/example_1kHz.gif" alt="Example view 2"></td>
   </tr>
 </table>
 
