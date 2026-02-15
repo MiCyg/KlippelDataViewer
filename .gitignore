@@ -31,11 +31,6 @@ build/
 dist/
 *.egg-info/
 
-# Outputs (generated media)
-outputs/
-*.gif
-*.mp4
-*.avi
 
 # Data logs (keep raw data, ignore generated logs)
 data/**
