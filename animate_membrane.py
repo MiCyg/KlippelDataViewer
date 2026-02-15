@@ -36,6 +36,8 @@ class MembraneAnimator:
             self.container.get_aal()["AAL[dB]"],
             "-"
         )
+        self.ax_bottom.set_xlabel("Frequency [Hz]")
+        self.ax_bottom.set_ylabel("AAL [dB]")
         self.ax_bottom.set_xscale("log")
         self.ax_bottom.grid(True, alpha=0.3)
 
@@ -66,6 +68,8 @@ class MembraneAnimator:
         )
 
         self.ax_top.set_aspect("equal")
+        self.ax_top.set_xlabel("x [mm]")
+        self.ax_top.set_ylabel("z [mm]")
 
         self.anim = FuncAnimation(
             self.fig,
