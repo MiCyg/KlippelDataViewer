@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
+
 from animate_membrane import main as animate_main
-from sce_parser import mean_amplitude_by_frequency
+from sce_parser import SceDataContainer
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,8 +32,20 @@ def main() -> None:
     args = build_parser().parse_args()
 
     if args.mean_only:
-        df = mean_amplitude_by_frequency(args.sce)
-        print(df.head(10).to_string(index=False))
+        data = SceDataContainer(str(args.sce))
+        rows = []
+        for resp in data._iter_responses():
+            amp_db = resp.df["amp_db"].to_numpy(dtype=float, copy=False)
+            valid = np.isfinite(amp_db) & (amp_db > data.SILENT_LEVEL_DB)
+            if np.any(valid):
+                mean_db = float(np.mean(amp_db[valid]))
+            else:
+                mean_db = float("nan")
+            rows.append((resp.j, resp.f_hz, mean_db))
+        if rows:
+            print("j f_hz mean_amp_db")
+            for j, f_hz, mean_db in rows[:10]:
+                print(f"{j} {f_hz:.6g} {mean_db:.6g}")
         return
 
     # Delegate to the animation CLI for consistency.

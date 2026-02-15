@@ -10,12 +10,7 @@ from matplotlib import gridspec
 import matplotlib.tri as mtri
 from matplotlib.colors import TwoSlopeNorm
 
-from sce_parser import (
-    SILENT_LEVEL_DB,
-    amp_db_to_linear_mm_per_v,
-    load_sce_dataframe,
-    mean_amplitude_by_frequency,
-)
+from sce_parser import SceDataContainer
 
 
 def _build_vertex_neighbors(triangles: np.ndarray, n_vertices: int) -> list[np.ndarray]:
@@ -28,6 +23,7 @@ def _build_vertex_neighbors(triangles: np.ndarray, n_vertices: int) -> list[np.n
         neigh[b].update((a, c))
         neigh[c].update((a, b))
     return [np.fromiter(s, dtype=int) if s else np.empty(0, dtype=int) for s in neigh]
+
 
 
 def _smooth_field(
@@ -103,7 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--freq", type=float, help="Target frequency in Hz (nearest match by default)")
     g.add_argument("--j", type=int, help="Frequency index j (1-based as in .sce)")
     p.add_argument("--exact", action="store_true", help="Require exact frequency match (no nearest)")
-    p.add_argument("--silent-db", type=float, default=SILENT_LEVEL_DB, help="Silent level threshold in dB (excluded from means)")
+    p.add_argument(
+        "--silent-db",
+        type=float,
+        default=SceDataContainer.SILENT_LEVEL_DB,
+        help="Silent level threshold in dB (excluded from means)",
+    )
     p.add_argument("--fps", type=float, default=30.0, help="Animation FPS")
     p.add_argument("--cycles", type=float, default=1.0, help="How many cycles per animation loop")
     p.add_argument("--scale", type=float, default=1.0, help="Displacement scale factor (visual only)")
@@ -160,17 +161,38 @@ def main() -> None:
     args = build_parser().parse_args()
     sce_path: Path = args.sce_path
 
-    df, f_selected, j_selected = load_sce_dataframe(
-        sce_path,
-        f_hz=args.freq if args.freq is not None else None,
-        j=args.j if args.j is not None else None,
-        nearest=not args.exact,
-        include_response=True,
-    )
-    assert f_selected is not None and j_selected is not None
+    container = SceDataContainer(str(sce_path))
+    freqs = container.get_frequencies()
 
-    # bottom plot: mean amplitude vs frequency
-    means = mean_amplitude_by_frequency(sce_path, silent_level_db=args.silent_db, use_linear=True)
+    if args.j is None:
+        if args.freq is None:
+            raise SystemExit("Either --freq or --j must be provided.")
+        target_f = float(args.freq)
+        if args.exact:
+            mask = freqs == target_f
+            if not bool(mask.any()):
+                raise SystemExit(f"Exact frequency {target_f} Hz not found.")
+            j_selected = int(freqs[mask].index[0])
+            f_selected = float(target_f)
+        else:
+            idx = int(np.argmin(np.abs(freqs.to_numpy(dtype=float) - target_f)))
+            j_selected = int(freqs.index[idx])
+            f_selected = float(freqs.iloc[idx])
+    else:
+        j_selected = int(args.j)
+        if j_selected not in freqs.index:
+            raise SystemExit(f"Frequency index j={j_selected} not found.")
+        f_selected = float(freqs.loc[j_selected])
+
+    resp_df = None
+    for resp in container._iter_responses():
+        if resp.j == j_selected:
+            resp_df = resp.df.copy()
+            break
+    if resp_df is None:
+        raise SystemExit(f"No response block found for j={j_selected}.")
+
+    df = container.get_geometry().merge(resp_df, on="i", how="left")
 
     # prepare animation data
     if "amp_db" not in df.columns or "phase_rad" not in df.columns:
@@ -178,7 +200,7 @@ def main() -> None:
 
     amp_db = df["amp_db"].to_numpy(dtype=float, copy=False)
     phase = df["phase_rad"].to_numpy(dtype=float, copy=False)
-    amp_lin = amp_db_to_linear_mm_per_v(amp_db)  # mm/V
+    amp_lin = container._db_to_lin(amp_db)  # mm/V
 
     # Keep only actually measured (non-silent) points.
     # Points without a measurement stay "missing" in the visualization (no interpolation).
@@ -195,7 +217,7 @@ def main() -> None:
     if f_selected_f <= 0:
         raise SystemExit(f"Invalid selected frequency: {f_selected_f}")
 
-    # For a seamless loop, the total phase advance over the full animation must be 2π*k.
+    # For a seamless loop, the total phase advance over the full animation must be 2*pi*k.
     # We enforce an integer number of cycles and sample the interval [0, T) (no endpoint),
     # so frame 0 and the "next loop" frame match exactly.
     cycles_int = int(round(float(args.cycles)))
@@ -219,13 +241,13 @@ def main() -> None:
     ax_top = fig.add_subplot(gs[0])
     axm = fig.add_subplot(gs[1])
 
-    fig.suptitle(f"{sce_path.name} — j={j_selected}, f={f_selected:.2f} Hz")
+    fig.suptitle(f"{sce_path.name} - j={j_selected}, f={f_selected:.2f} Hz")
 
     # mean plot
-    axm.plot(means["f_hz"], means["mean_amp_db"], "-", lw=1)
+    axm.plot(container.get_frequencies(), container.aal["AAL[dB]"], "-", lw=1)
     axm.set_xlabel("Frequency [Hz]")
-    axm.set_ylabel("Mean amplitude [dB mm/V]")
-    # axm.set_xscale("log")
+    axm.set_ylabel("Acumulated acceleration Level [dB]")
+    axm.set_xscale("log")
     axm.grid(True, alpha=0.3)
     vline = axm.axvline(float(f_selected), color="tab:red", lw=1)
 

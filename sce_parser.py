@@ -24,19 +24,66 @@ class SceDataContainer:
     SILENT_LEVEL_DB = -130.0
     
     def __init__(self, file_path: str = None, reference_value: float = 1.0):
-        self.file_path = Path(file_path)
-        self.reference_value = reference_value
-        if self.file_path:
+        self._file_path = Path(file_path)
+        self._reference_value = reference_value
+        if self._file_path:
             self.import_data()
         
 
-    def import_data(self) -> None:
-        self.frequencies = self._parse_frequencies()
-        self.geometry = self._parse_geometry()
+    def import_data(self, path: str | None = None) -> None:
+        if path is not None:
+            self._file_path = Path(path)
+        self._frequencies = self._parse_frequencies()
+        self._geometry = self._parse_geometry()
         self.aal = self._calc_AAL()
+        
+    def get_frequencies(self) -> pd.Series: 
+        return self._frequencies.copy()
+    
+    def get_geometry(self) -> pd.DataFrame:
+        return self._geometry
+    
+    def get_response(self, freq: float = None, j: int = None) -> pd.DataFrame:
+        if freq is None and j is None:
+            raise ValueError("Either freq or j must be provided.")
+
+        if j is None:
+            target_f = float(freq)
+            mask = self._frequencies == target_f
+            if not bool(mask.any()):
+                raise ValueError(f"Exact frequency {target_f} Hz not found.")
+            j_selected = int(self._frequencies[mask].index[0])
+        else:
+            j_selected = int(j)
+            if j_selected not in self._frequencies.index:
+                raise ValueError(f"Frequency index j={j_selected} not found.")
+
+        resp_df = None
+        for resp in self._iter_responses():
+            if resp.j == j_selected:
+                resp_df = resp.df.copy()
+                break
+        if resp_df is None:
+            raise ValueError(f"No response block found for j={j_selected}.")
+
+        merged = self._geometry.merge(resp_df, on="i", how="left")
+        disp_db = merged["amp_db"].to_numpy(dtype=float, copy=False)
+        disp_lin = self._db_to_lin(disp_db, ref=self._reference_value)
+
+        out = pd.DataFrame(
+            {
+                "idx": merged["i"].astype(int),
+                "x": merged["x"].astype(float),
+                "y": merged["y"].astype(float),
+                "z": merged["z"].astype(float),
+                "disp[mm/V]": disp_lin,
+                "disp[dB]": disp_db,
+            }
+        )
+        return out
 
     def _read_lines(self, *, encoding: str = "utf-8") -> list[str]:
-        return Path(self.file_path).read_text(encoding=encoding).splitlines()
+        return Path(self._file_path).read_text(encoding=encoding).splitlines()
     
     def _iter_responses(self) -> Iterator[SceResponse]:
         """
@@ -95,8 +142,6 @@ class SceDataContainer:
 
             df = pd.DataFrame(rows, columns=["i", "amp_db", "phase_rad"])
             yield SceResponse(j=j, f_hz=f_hz, df=df)
-
-
 
     def _parse_geometry(self) -> pd.DataFrame:
         """
@@ -187,7 +232,6 @@ class SceDataContainer:
             raise ValueError("No frequency(j) entries found in .sce file.")
         return pd.Series(freqs, name="f_hz").sort_index()
     
-   
     def _calc_AAL(self,*,silent_level_db:float = SILENT_LEVEL_DB) -> pd.DataFrame:
         """
         Compute per-frequency acumulated amplitude over points.
