@@ -1,325 +1,191 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib import gridspec
-import matplotlib.tri as mtri
 from matplotlib.colors import TwoSlopeNorm
 
-from sce_parser import (
-    SILENT_LEVEL_DB,
-    amp_db_to_linear_mm_per_v,
-    load_sce_dataframe,
-    mean_amplitude_by_frequency,
-)
+from sce_parser import SceDataContainer
 
-
-def _build_vertex_neighbors(triangles: np.ndarray, n_vertices: int) -> list[np.ndarray]:
-    neigh: list[set[int]] = [set() for _ in range(n_vertices)]
-    for a, b, c in triangles:
-        a = int(a)
-        b = int(b)
-        c = int(c)
-        neigh[a].update((b, c))
-        neigh[b].update((a, c))
-        neigh[c].update((a, b))
-    return [np.fromiter(s, dtype=int) if s else np.empty(0, dtype=int) for s in neigh]
-
-
-def _smooth_field(
-    values: np.ndarray,
-    neighbors: list[np.ndarray],
-    *,
-    alpha: float,
-    iters: int,
-    method: str = "mean",
-    weights: list[np.ndarray] | None = None,
-    trim: float = 0.1,
-    valid: np.ndarray | None = None,
-) -> np.ndarray:
-    if iters <= 0 or alpha <= 0:
-        return values
-    if not (0.0 <= alpha <= 1.0):
-        raise ValueError("smooth alpha must be in [0, 1]")
-    if method not in ("mean", "median", "gaussian", "trimmed"):
-        raise ValueError("smooth method must be one of: mean, median, gaussian, trimmed")
-    if method == "gaussian" and weights is None:
-        raise ValueError("gaussian smoothing requires precomputed weights")
-    if method == "trimmed" and not (0.0 <= float(trim) < 0.5):
-        raise ValueError("trim must be in [0, 0.5)")
-
-    out = values.astype(float, copy=True)
-    if valid is None:
-        valid = np.ones(out.shape[0], dtype=bool)
-    else:
-        valid = valid.astype(bool, copy=False)
-
-    # Iterative neighbor smoothing.
-    for _ in range(int(iters)):
-        new = out.copy()
-        for i, nbrs in enumerate(neighbors):
-            if not valid[i] or nbrs.size == 0:
-                continue
-            nbr_valid = nbrs[valid[nbrs]]
-            if nbr_valid.size == 0:
-                continue
-            vals = out[nbr_valid]
-            if method == "mean":
-                stat = float(np.mean(vals))
-            elif method == "median":
-                stat = float(np.median(vals))
-            elif method == "trimmed":
-                if vals.size < 3:
-                    stat = float(np.mean(vals))
-                else:
-                    k = int(np.floor(float(trim) * vals.size))
-                    if k == 0:
-                        stat = float(np.mean(vals))
-                    else:
-                        v = np.sort(vals)
-                        stat = float(np.mean(v[k:-k])) if (vals.size - 2 * k) > 0 else float(np.mean(v))
-            else:  # gaussian
-                w = weights[i]
-                wv = w[valid[nbrs]]
-                sw = float(np.sum(wv))
-                if sw <= 0:
-                    stat = float(np.mean(vals))
-                else:
-                    stat = float(np.dot(wv, vals) / sw)
-
-            new[i] = (1.0 - alpha) * out[i] + alpha * stat
-        out = new
-    return out
-
-
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Animate Klippel .sce membrane response at a chosen frequency.")
-    p.add_argument("sce_path", type=Path, help="Path to .sce file")
-    g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--freq", type=float, help="Target frequency in Hz (nearest match by default)")
-    g.add_argument("--j", type=int, help="Frequency index j (1-based as in .sce)")
-    p.add_argument("--exact", action="store_true", help="Require exact frequency match (no nearest)")
-    p.add_argument("--silent-db", type=float, default=SILENT_LEVEL_DB, help="Silent level threshold in dB (excluded from means)")
-    p.add_argument("--fps", type=float, default=30.0, help="Animation FPS")
-    p.add_argument("--cycles", type=float, default=1.0, help="How many cycles per animation loop")
-    p.add_argument("--scale", type=float, default=1.0, help="Displacement scale factor (visual only)")
-    p.add_argument(
-        "--smooth",
-        type=float,
-        default=0.0,
-        help="Spatial smoothing strength in [0..1] (0 disables).",
-    )
-    p.add_argument(
-        "--smooth-iters",
-        type=int,
-        default=0,
-        help="Number of spatial smoothing iterations (0 disables).",
-    )
-    p.add_argument(
-        "--smooth-method",
-        choices=["mean", "median", "trimmed", "gaussian"],
-        default="mean",
-        help="Smoothing method. 'median'/'trimmed' are more robust to outliers; 'gaussian' is distance-weighted.",
-    )
-    p.add_argument(
-        "--smooth-trim",
-        type=float,
-        default=0.1,
-        help="Trim fraction for --smooth-method trimmed (e.g. 0.1 trims 10%% low/high).",
-    )
-    p.add_argument(
-        "--smooth-sigma",
-        type=float,
-        default=5.0,
-        help="Sigma [mm] for --smooth-method gaussian (distance weighting on x-z plane).",
-    )
-    return p
-
-
-def main() -> None:
-    args = build_parser().parse_args()
-    sce_path: Path = args.sce_path
-
-    df, f_selected, j_selected = load_sce_dataframe(
-        sce_path,
-        f_hz=args.freq if args.freq is not None else None,
-        j=args.j if args.j is not None else None,
-        nearest=not args.exact,
-        include_response=True,
-    )
-    assert f_selected is not None and j_selected is not None
-
-    # bottom plot: mean amplitude vs frequency
-    means = mean_amplitude_by_frequency(sce_path, silent_level_db=args.silent_db, use_linear=True)
-
-    # prepare animation data
-    if "amp_db" not in df.columns or "phase_rad" not in df.columns:
-        raise SystemExit("No response columns found. Expected amp_db and phase_rad.")
-
-    amp_db = df["amp_db"].to_numpy(dtype=float, copy=False)
-    phase = df["phase_rad"].to_numpy(dtype=float, copy=False)
-    amp_lin = amp_db_to_linear_mm_per_v(amp_db)  # mm/V
-
-    valid = np.isfinite(amp_db) & (amp_db > args.silent_db + 1e-9) & np.isfinite(phase)
-    amp_lin = np.where(valid, amp_lin, 0.0)
-    phase = np.where(valid, phase, 0.0)
-
-    x = df["x"].to_numpy(dtype=float, copy=False)
-    z = df["z"].to_numpy(dtype=float, copy=False)
-    y0 = df["y"].to_numpy(dtype=float, copy=False)
-
-    # time base: create frames for given number of cycles
-    f_selected_f = float(f_selected)
-    if f_selected_f <= 0:
-        raise SystemExit(f"Invalid selected frequency: {f_selected_f}")
-
-    # For a seamless loop, the total phase advance over the full animation must be 2π*k.
-    # We enforce an integer number of cycles and sample the interval [0, T) (no endpoint),
-    # so frame 0 and the "next loop" frame match exactly.
-    cycles_int = int(round(float(args.cycles)))
-    if cycles_int < 1:
-        raise SystemExit("--cycles must be >= 1 for a seamless loop")
-    omega = 2.0 * np.pi * f_selected_f
-    T = cycles_int / f_selected_f
-    n_frames = max(20, int(round(args.fps * T)))
-    dt = T / n_frames
-
-    # Precompute components so per-frame update is just a linear combination.
-    # disp(t) = A*cos(theta+phi) = cos(theta)*(A*cos(phi)) - sin(theta)*(A*sin(phi))
-    cos_phase = np.cos(phase)
-    sin_phase = np.sin(phase)
-    comp_c = float(args.scale) * amp_lin * cos_phase
-    comp_s = float(args.scale) * amp_lin * sin_phase
-
-    fig = plt.figure(figsize=(11, 8))
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.25)
-
-    ax_top = fig.add_subplot(gs[0])
-    axm = fig.add_subplot(gs[1])
-
-    fig.suptitle(f"{sce_path.name} — j={j_selected}, f={f_selected:.2f} Hz")
-
-    # mean plot
-    axm.plot(means["f_hz"], means["mean_amp_db"], "-", lw=1)
-    axm.set_xlabel("Frequency [Hz]")
-    axm.set_ylabel("Mean amplitude [dB mm/V]")
-    axm.set_xscale("log")
-    axm.grid(True, alpha=0.3)
-    vline = axm.axvline(float(f_selected), color="tab:red", lw=1)
-
-    time_text = ax_top.text(0.01, 0.99, "", transform=ax_top.transAxes, va="top")
-
-    # 2D view: use triangulation on x-z plane and animate displacement as colormap.
-    tri = mtri.Triangulation(x, z)
-    neighbors = _build_vertex_neighbors(tri.triangles, x.shape[0])
-
-    if args.smooth_iters > 0 and args.smooth > 0:
-        weights = None
-        if args.smooth_method == "gaussian":
-            sigma = float(args.smooth_sigma)
-            if sigma <= 0:
-                raise SystemExit("--smooth-sigma must be > 0")
-            denom = 2.0 * sigma * sigma
-            weights = []
-            for i, nbrs in enumerate(neighbors):
-                if nbrs.size == 0:
-                    weights.append(np.empty(0, dtype=float))
-                    continue
-                dx = x[nbrs] - x[i]
-                dz = z[nbrs] - z[i]
-                d2 = dx * dx + dz * dz
-                weights.append(np.exp(-d2 / denom))
-
-        comp_c = _smooth_field(
-            comp_c,
-            neighbors,
-            alpha=float(args.smooth),
-            iters=int(args.smooth_iters),
-            method=str(args.smooth_method),
-            weights=weights,
-            trim=float(args.smooth_trim),
-            valid=valid,
-        )
-        comp_s = _smooth_field(
-            comp_s,
-            neighbors,
-            alpha=float(args.smooth),
-            iters=int(args.smooth_iters),
-            method=str(args.smooth_method),
-            weights=weights,
-            trim=float(args.smooth_trim),
-            valid=valid,
+class MembraneAnimator:
+    def __init__(self, sce_path, j, silent_db, fps, cycles, scale):
+        self.container = SceDataContainer(str(sce_path))
+        self.model = MembraneModel(
+            self.container, silent_db, scale, cycles, fps
         )
 
-    disp0 = np.zeros_like(x, dtype=float)
+        self.j = j
 
-    amp_valid = np.sqrt(comp_c[valid] ** 2 + comp_s[valid] ** 2)
-    if amp_valid.size:
-        max_disp = float(np.nanpercentile(amp_valid, 99))
-    else:
-        max_disp = 0.0
-    if not np.isfinite(max_disp) or max_disp <= 0:
-        # Avoid a degenerate colormap (all gray) when initial data is all zeros/silent.
-        max_disp = 1e-6
+    def run(self):
+        f_selected, j_selected = self.model.load_frequency(self.j)
 
-    norm = TwoSlopeNorm(vcenter=0.0, vmin=-max_disp, vmax=max_disp)
+        self.fig = plt.figure(figsize=(11, 8))
+        gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.25)
 
-    tpc = ax_top.tripcolor(tri, disp0, shading="gouraud", cmap="coolwarm", norm=norm)
-    cb = fig.colorbar(tpc, ax=ax_top, pad=0.1, fraction=0.03)
-    cb.set_label("displacement [mm/V] (scaled)")
+        self.ax_top = self.fig.add_subplot(gs[0])
+        self.ax_bottom = self.fig.add_subplot(gs[1])
 
-    ax_top.set_aspect("equal", adjustable="box")
-    ax_top.set_xlabel("x [mm]")
-    ax_top.set_ylabel("z [mm]")
+        self.fig.suptitle(f"{self.container.get_file_path()} - f={f_selected:.2f} Hz")
 
-    ax_top.set_xlim(np.nanmin(x), np.nanmax(x))
-    ax_top.set_ylim(np.nanmin(z), np.nanmax(z))
+        # --- dolny wykres AAL
+        self.ax_bottom.plot(
+            self.container.get_aal()["f[Hz]"],
+            self.container.get_aal()["AAL[dB]"],
+            "-"
+        )
+        self.ax_bottom.set_xlabel("Frequency [Hz]")
+        self.ax_bottom.set_ylabel("AAL [dB]")
+        self.ax_bottom.set_xscale("log")
+        self.ax_bottom.grid(True, alpha=0.3)
 
-    def update(frame_idx: int):
-        t = frame_idx * dt
-        # Use explicit phase progress over the loop to avoid visible discontinuities.
-        theta = 2.0 * np.pi * cycles_int * (frame_idx / n_frames)
+        self.vline = self.ax_bottom.axvline(f_selected, color="red")
+
+        # --- scatter
+        disp0 = np.zeros_like(self.model.x)
+
+        self.norm = TwoSlopeNorm(
+            vcenter=0.0,
+            vmin=-self.model.max_disp,
+            vmax=self.model.max_disp
+        )
+
+        self.tpc = self.ax_top.scatter(
+            self.model.x,
+            self.model.z,
+            c=disp0,
+            cmap="coolwarm",
+            norm=self.norm,
+            s=12
+        )
+
+        self.time_text = self.ax_top.text(
+            0.01, 0.99, "",
+            transform=self.ax_top.transAxes,
+            va="top"
+        )
+
+        self.ax_top.set_aspect("equal")
+        self.ax_top.set_xlabel("x [mm]")
+        self.ax_top.set_ylabel("z [mm]")
+
+        self.anim = FuncAnimation(
+            self.fig,
+            self.update,
+            frames=self.model.n_frames,
+            interval=1000.0 / self.model.fps,
+            blit=True
+        )
+
+        self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+
+        plt.show()
+
+    # ---------------------------------------------------------
+
+    def update(self, frame_idx):
+        disp = self.model.displacement(frame_idx)
+        self.tpc.set_array(disp)
+        self.time_text.set_text(
+            f"t = {frame_idx * self.model.dt:.4f} s"
+        )
+        return (self.tpc, self.time_text)
+
+    # ---------------------------------------------------------
+
+    def on_click(self, event):
+        if event.inaxes != self.ax_bottom:
+            return
+
+        new_freq = float(event.xdata)
+
+        f_selected, _ = self.model.load_frequency(new_freq, self.j)
+        self.fig.suptitle(f"{self.container.get_file_path()} - f={f_selected:.2f} Hz")
+        
+        self.norm = TwoSlopeNorm(
+            vcenter=0.0,
+            vmin=-self.model.max_disp,
+            vmax=self.model.max_disp
+        )
+
+        self.tpc.set_offsets(
+            np.column_stack([self.model.x, self.model.z])
+        )
+        self.tpc.set_norm(self.norm)
+
+        self.vline.set_xdata([f_selected])
+
+        # restart animacji
+        self.anim.frame_seq = self.anim.new_frame_seq()
+
+        self.fig.canvas.draw_idle()
+
+
+class MembraneModel:
+    def __init__(self, container, silent_db, scale, cycles, fps):
+        self.container = container
+        self.silent_db = silent_db
+        self.scale = scale
+        self.cycles = cycles
+        self.fps = fps
+
+    def load_frequency(self, freq=None, j=None):
+        if freq is None and j is None:
+            freq = float(self.container.get_aal()["f[Hz]"].iloc[0])
+        df, f_selected, j_selected = self.container.get_response_raw(
+            freq=freq,
+            j=j,
+            nearest=True,
+            exact=False,
+        )
+
+        amp_db = df["amp_db"].to_numpy(dtype=float)
+        phase = df["phase_rad"].to_numpy(dtype=float)
+        amp_lin = self.container._db_to_lin(amp_db)
+
+        self.valid = (
+            np.isfinite(amp_db)
+            & (amp_db > self.silent_db + 1e-9)
+            & np.isfinite(phase)
+        )
+
+        amp_lin = np.where(self.valid, amp_lin, 0.0)
+        phase = np.where(self.valid, phase, 0.0)
+
+        self.x = df["x"].to_numpy(dtype=float)
+        self.z = df["z"].to_numpy(dtype=float)
+
+        cos_phase = np.cos(phase)
+        sin_phase = np.sin(phase)
+
+        self.comp_c = self.scale * amp_lin * cos_phase
+        self.comp_s = self.scale * amp_lin * sin_phase
+
+        self.freq = float(f_selected)
+        self.cycles_int = int(round(self.cycles))
+
+        T = self.cycles_int / self.freq
+        self.n_frames = max(20, int(round(self.fps * T)))
+        self.dt = T / self.n_frames
+
+        amp_valid = np.sqrt(
+            self.comp_c[self.valid] ** 2 +
+            self.comp_s[self.valid] ** 2
+        )
+
+        self.max_disp = float(np.nanpercentile(amp_valid, 99)) if amp_valid.size else 1e-6
+        if self.max_disp <= 0 or not np.isfinite(self.max_disp):
+            self.max_disp = 1e-6
+
+        return f_selected, j_selected
+
+    def displacement(self, frame_idx):
+        theta = 2.0 * np.pi * self.cycles_int * (frame_idx / self.n_frames)
         cos_wt = np.cos(theta)
         sin_wt = np.sin(theta)
-        disp = cos_wt * comp_c - sin_wt * comp_s
 
-        tpc.set_array(disp)
+        disp = cos_wt * self.comp_c - sin_wt * self.comp_s
+        return np.where(self.valid, disp, np.nan)
 
-        time_text.set_text(f"t = {t:.4f} s")
-        return (tpc, time_text, vline)
-
-    # blit keeps the UI more responsive during animation.
-    use_blit = True
-    anim = FuncAnimation(
-        fig,
-        update,
-        frames=n_frames,
-        interval=1000.0 / args.fps,
-        blit=use_blit,
-        repeat=True,
-    )
-
-    # Key controls: Space to pause/resume (useful for pan/zoom), Esc/Q to quit.
-    paused = {"v": False}
-
-    def on_key(event):
-        if event.key in (" ", "space"):
-            if paused["v"]:
-                anim.event_source.start()
-            else:
-                anim.event_source.stop()
-            paused["v"] = not paused["v"]
-        elif event.key in ("escape", "q"):
-            plt.close(fig)
-
-    fig.canvas.mpl_connect("key_press_event", on_key)
-
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()

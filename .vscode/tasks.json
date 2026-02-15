@@ -1,49 +1,101 @@
 {
   "version": "2.0.0",
+
   "inputs": [
     {
       "id": "scePath",
       "type": "promptString",
       "description": "Path to your .sce file (relative to workspace root is OK)",
-      "default": "path\\to\\your_measurement.sce"
-    },
-    {
-      "id": "freqHz",
-      "type": "promptString",
-      "description": "Target frequency in Hz (nearest match by default)",
-      "default": "100"
+      "default": "path/to/your_measurement.sce"
     }
   ],
+
   "tasks": [
+	{
+		"label": "Create venv",
+		"hide": true,
+		"type": "shell",
+		"command": "py",
+		"args": [
+			"-m",
+			"venv",
+			".venv"
+		],
+		"problemMatcher": []
+	},
+	{
+		"label": "Upgrade pip",
+		"hide": true,
+		"type": "shell",
+		"command": ".venv/Scripts/python",
+		"args": [
+			"-m",
+			"pip",
+			"install",
+			"--upgrade",
+			"pip"
+		],
+		"dependsOn": "Create venv",
+		"dependsOrder": "sequence",
+		"problemMatcher": []
+	},
+	{
+		"label": "Install requirements",
+		"hide": true,
+		"type": "shell",
+		"command": ".venv/Scripts/python",
+		"args": [
+			"-m",
+			"pip",
+			"install",
+			"-r",
+			"requirements.txt"
+		],
+		"dependsOn": "Upgrade pip",
+		"dependsOrder": "sequence",
+		"problemMatcher": []
+	},
+	{
+		"label": "Setup Python virtual environment",
+		"dependsOn": [
+			"Create venv",
+			"Upgrade pip",
+			"Install requirements"
+		],
+		"dependsOrder": "sequence",
+		"problemMatcher": []
+	},
     {
-      "label": "Setup venv environment",
+      "label": "Run: animation (.venv)",
       "type": "shell",
-      "command": "powershell",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
+      "command": ".venv/Scripts/python",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "& { if (!(Test-Path .venv)) { py -m venv .venv }; & .\\.venv\\Scripts\\python.exe -m pip install --upgrade pip; & .\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt }"
+        "main.py",
+        "--sce",
+        "${input:scePath}"
       ],
       "problemMatcher": []
     },
-    {
-      "label": "Run: animation",
-      "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": ["main.py", "--sce", "${input:scePath}", "--freq", "${input:freqHz}"],
-      "problemMatcher": []
-    },
-    {
-      "label": "Run: mean amplitude",
-      "type": "shell",
-      "command": ".\\.venv\\Scripts\\python.exe",
-      "args": ["main.py", "--sce", "${input:scePath}", "--mean-only"],
-      "problemMatcher": []
-    }
-  ]
+	{
+		"label": "Run: AAL amplitude (.venv)",
+		"type": "shell",
+		"command": ".venv/Scripts/python",
+		"args": [
+			"main.py",
+			"--sce",
+			"${input:scePath}",
+			"--aal-only"
+		],
+		"problemMatcher": []
+	},
+	{
+		"label": "Run: sce_parser",
+		"type": "shell",
+		"command": ".venv/Scripts/python",
+		"args": [
+			"sce_parser.py"
+		],
+		"problemMatcher": []
+	}
+]
 }
