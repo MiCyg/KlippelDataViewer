@@ -40,8 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument("--fps", type=float, default=30.0)
-    p.add_argument("--cycles", type=float, default=1.0)
     p.add_argument("--scale", type=float, default=1.0)
+    p.add_argument("--export-view-path", type=Path, default=None, help="Export animation to .gif or .mp4")
+    p.add_argument("--frequency", type=float, default=None, help="Frequency [Hz] used only for export")
 
     return p
 
@@ -60,8 +61,9 @@ def main() -> None:
         j=args.j,
         silent_db=args.silent_db,
         fps=args.fps,
-        cycles=args.cycles,
         scale=args.scale,
+        export_view_path=args.export_view_path,
+        export_frequency=args.frequency,
     )
 
     animator.run()

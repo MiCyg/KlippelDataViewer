@@ -11,13 +11,13 @@ from matplotlib.colors import TwoSlopeNorm
 from sce_parser import SceDataContainer
 
 class MembraneAnimator:
-    def __init__(self, sce_path, j, silent_db, fps, cycles, scale):
+    def __init__(self, sce_path, j, silent_db, fps, scale, export_view_path=None, export_frequency=None):
         self.container = SceDataContainer(str(sce_path))
-        self.model = MembraneModel(
-            self.container, silent_db, scale, cycles, fps
-        )
+        self.model = MembraneModel(self.container, silent_db, scale, fps)
 
         self.j = j
+        self.export_view_path = export_view_path
+        self.export_frequency = export_frequency
 
     def run(self):
         f_selected, j_selected = self.model.load_frequency(self.j)
@@ -60,6 +60,14 @@ class MembraneAnimator:
             norm=self.norm,
             s=12
         )
+        self.cbar = self.fig.colorbar(
+            self.tpc,
+            ax=self.ax_top,
+            pad=0.02,
+            fraction=0.04
+        )
+        self.cbar.set_label("Displacement [mm/V]")
+        
 
         self.time_text = self.ax_top.text(
             0.01, 0.99, "",
@@ -79,18 +87,52 @@ class MembraneAnimator:
             blit=True
         )
 
+        if self.export_view_path:
+            self._export_animation(self.export_view_path)
+
         self.fig.canvas.mpl_connect("button_press_event", self.on_click)
 
         plt.show()
+
+    def _export_animation(self, export_path):
+        out_path = Path(export_path)
+        suffix = out_path.suffix.lower()
+        fps = float(self.model.fps)
+
+        try:
+            if self.export_frequency is not None:
+                f_selected, _ = self.model.load_frequency(self.export_frequency, self.j)
+                self.fig.suptitle(f"{self.container.get_file_path()} - f={f_selected:.2f} Hz")
+                self.norm = TwoSlopeNorm(
+                    vcenter=0.0,
+                    vmin=-self.model.max_disp,
+                    vmax=self.model.max_disp
+                )
+                self.tpc.set_offsets(
+                    np.column_stack([self.model.x, self.model.z])
+                )
+                self.tpc.set_norm(self.norm)
+                self.vline.set_xdata([f_selected])
+
+            if suffix == ".gif":
+                from matplotlib.animation import PillowWriter
+                writer = PillowWriter(fps=fps)
+            elif suffix == ".mp4":
+                from matplotlib.animation import FFMpegWriter
+                writer = FFMpegWriter(fps=fps)
+            else:
+                raise SystemExit("Unsupported export extension. Use .gif or .mp4")
+
+            self.anim.save(str(out_path), writer=writer, dpi=100)
+        except Exception as exc:
+            raise SystemExit(f"Export failed: {exc}")
 
     # ---------------------------------------------------------
 
     def update(self, frame_idx):
         disp = self.model.displacement(frame_idx)
         self.tpc.set_array(disp)
-        self.time_text.set_text(
-            f"t = {frame_idx * self.model.dt:.4f} s"
-        )
+        self.time_text.set_text(f"t = {frame_idx * 1e6 * self.model.dt:.1f} us")
         return (self.tpc, self.time_text)
 
     # ---------------------------------------------------------
@@ -124,11 +166,10 @@ class MembraneAnimator:
 
 
 class MembraneModel:
-    def __init__(self, container, silent_db, scale, cycles, fps):
+    def __init__(self, container, silent_db, scale, fps):
         self.container = container
         self.silent_db = silent_db
         self.scale = scale
-        self.cycles = cycles
         self.fps = fps
 
     def load_frequency(self, freq=None, j=None):
@@ -164,9 +205,8 @@ class MembraneModel:
         self.comp_s = self.scale * amp_lin * sin_phase
 
         self.freq = float(f_selected)
-        self.cycles_int = int(round(self.cycles))
 
-        T = self.cycles_int / self.freq
+        T = 1.0 / self.freq
         self.n_frames = max(20, int(round(self.fps * T)))
         self.dt = T / self.n_frames
 
@@ -182,7 +222,7 @@ class MembraneModel:
         return f_selected, j_selected
 
     def displacement(self, frame_idx):
-        theta = 2.0 * np.pi * self.cycles_int * (frame_idx / self.n_frames)
+        theta = 2.0 * np.pi * (frame_idx / self.n_frames)
         cos_wt = np.cos(theta)
         sin_wt = np.sin(theta)
 
