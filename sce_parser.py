@@ -22,10 +22,12 @@ class SceResponse:
 class SceDataContainer:
     
     SILENT_LEVEL_DB = -130.0
+    rho0 = 1.21
+    p0 = 20e-6
     
-    def __init__(self, file_path: str = None, reference_value: float = 1.0):
+    
+    def __init__(self, file_path: str = None):
         self._file_path = Path(file_path)
-        self._reference_value = reference_value
         if self._file_path:
             self.import_data()
         
@@ -52,7 +54,7 @@ class SceDataContainer:
     def get_response(self, freq: float = None, j: int = None) -> pd.DataFrame:
         df, _, _ = self.get_response_raw(freq=freq, j=j, nearest=False, exact=True)
         disp_db = df["amp_db"].to_numpy(dtype=float, copy=False)
-        disp_lin = self._db_to_lin(disp_db, ref=self._reference_value)
+        disp_lin = self._db_to_lin(disp_db)
 
         out = pd.DataFrame(
             {
@@ -263,15 +265,14 @@ class SceDataContainer:
             omega = 2*np.pi*resp.f_hz
             level = resp.df["amp_db"].to_numpy(dtype=float, copy=False)
             
-            # Displacement in lin [m] from level [dB]
-            displacement_m = self._db_to_lin(level) / 1000.0
+            # Displacement in lin [m/V] from level [dB]
+            membrane_sensitivity = self._db_to_lin(level) / 1000.0
 
-            # 
-            accum_accel = (omega**2) * np.sqrt(np.sum(displacement_m**2))
+            # https://www.klippel.de/manuals/scanningvibrometer-partmeasurement/rma/rma.html
+            # _aal = 20.0 * np.log10( self.rho0 * (omega**2) / (2.0 * np.pi * np.sqrt(2) * self.p0) * np.sum(membrane_sensitivity**2))
+            _aal = 20.0 * np.log10( (omega**2) * np.sum(membrane_sensitivity))
             
-            _aal = 20.0 * np.log10(accum_accel)
-            
-            accumulated_displacement_mm = np.sum(displacement_m*1000)
+            accumulated_displacement_mm = np.sum(membrane_sensitivity*1000)
             
             rows.append((resp.j, resp.f_hz, accumulated_displacement_mm, _aal))
         return pd.DataFrame(rows, columns=["j", "f[Hz]", "AAL[m/V]", "AAL[dB]"]).sort_values("f[Hz]")
