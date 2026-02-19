@@ -3,5 +3,8 @@
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingModuleSource": "none",
         "reportShadowedImports": "none"
-    }
+    },
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
 }
