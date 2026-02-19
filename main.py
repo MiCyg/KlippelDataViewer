@@ -29,7 +29,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--aal-only",
         action="store_true",
-        help="Only print AAL table head"
+        help="Only calculate AAL table and save to csv file (--aal-path)"
+    )
+    
+    p.add_argument(
+        "--aal-path",
+        type=Path,
+        help="Path to --aal-only parameter (.csv)"
     )
 
     p.add_argument(
@@ -52,8 +58,11 @@ def main() -> None:
 
     container = SceDataContainer(str(args.sce))
 
-    if args.aal_only:
-        print(container.get_aal().to_string(index=False))
+    if args.aal_only and args.aal_path:
+        if args.aal_path.suffix != ".csv":
+            raise SystemExit("Unsupported export extension. Use .csv")
+        
+        container.get_aal().to_csv(args.aal_path, index=False)
         return
 
     animator = MembraneAnimator(
