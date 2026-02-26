@@ -37,6 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to --aal-only parameter (.csv)"
     )
+    
+    
+    p.add_argument(
+        "--accel-only",
+        action="store_true",
+        help="Only calculate coil accel table and save to csv file (--accel-path)"
+    )
+    
+    p.add_argument(
+        "--accel-path",
+        type=Path,
+        help="Path to --accel-only parameter (.csv)"
+    )
 
     p.add_argument(
         "--silent-db",
@@ -62,7 +75,14 @@ def main() -> None:
         if args.aal_path.suffix != ".csv":
             raise SystemExit("Unsupported export extension. Use .csv")
         
-        container.get_aal().to_csv(args.aal_path, index=False)
+        container.get_aal().to_csv(args.aal_path, index=False, sep=";", decimal=".")
+        return
+    
+    if args.accel_only and args.accel_path:
+        if args.accel_path.suffix != ".csv":
+            raise SystemExit("Unsupported export extension. Use .csv")
+
+        container.get_acceleration().to_csv(args.accel_path, index=False, sep=";", decimal=".")
         return
 
     animator = MembraneAnimator(

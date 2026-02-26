@@ -38,6 +38,7 @@ class SceDataContainer:
         self._frequencies = self._parse_frequencies()
         self._geometry = self._parse_geometry()
         self._aal = self._calc_AAL()
+        self._accel = self._calc_accel()
         
     def get_file_path(self):
         return self._file_path
@@ -50,6 +51,9 @@ class SceDataContainer:
  
     def get_aal(self) -> pd.DataFrame:
         return self._aal
+    
+    def get_acceleration(self) -> pd.DataFrame:
+        return self._accel
    
     def get_response(self, freq: float = None, j: int = None) -> pd.DataFrame:
         df, _, _ = self.get_response_raw(freq=freq, j=j, nearest=False, exact=True)
@@ -255,10 +259,29 @@ class SceDataContainer:
             raise ValueError("No frequency(j) entries found in .sce file.")
         return pd.Series(freqs, name="f_hz").sort_index()
     
+    def _calc_accel(self) -> pd.DataFrame:
+        """
+        Compute per-frequency averaged force over points.
+        """
+        rows = []
+        for resp in self._iter_responses():
+            level = resp.df["amp_db"].to_numpy(dtype=float, copy=False)
+            omega = 2*np.pi*resp.f_hz
+            
+            # Displacement in lin [m/V] from level [dB]
+            membrane_sensitivity = self._db_to_lin(level) / 1000.0
+
+            membrane_displacement = np.mean(membrane_sensitivity)  #* 1[V]
+            avg_accel = (omega**2) * membrane_displacement
+            
+            rows.append((resp.j, resp.f_hz, avg_accel))
+        
+        return pd.DataFrame(rows, columns=["j", "f[Hz]", "accel[m/s^2]"]).sort_values("f[Hz]")
+    
+
     def _calc_AAL(self,*,silent_level_db:float = SILENT_LEVEL_DB) -> pd.DataFrame:
         """
         Compute per-frequency acumulated amplitude over points.
-        - Points at silent_level_db are excluded.
         """
         rows = []
         for resp in self._iter_responses():

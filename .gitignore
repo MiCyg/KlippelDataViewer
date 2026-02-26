@@ -35,3 +35,5 @@ dist/
 # Data logs (keep raw data, ignore generated logs)
 data/**
 
+*.ipynb
+*.csv
